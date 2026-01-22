@@ -127,8 +127,13 @@ void VulkanEngine::init_sync_structures()
 	for (auto& frame : _frames)
 	{
 		VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &frame._renderFence));
-		VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &frame._renderSemaphore));
 		VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &frame._swapchainSemaphore));
+	}
+
+	_renderFinishedSemaphores.resize(_swapchainImages.size());
+	for (auto& renderFinished : _renderFinishedSemaphores)
+	{
+		VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &renderFinished));
 	}
 }
 
@@ -165,15 +170,16 @@ void VulkanEngine::cleanup()
 	if (_isInitialized) {
 		vkDeviceWaitIdle(_device);
 
-		for (auto& frame : _frames)
+		for (auto& renderFinished : _renderFinishedSemaphores)
 		{
-			vkDestroySemaphore(_device, frame._swapchainSemaphore, nullptr);
-			vkDestroySemaphore(_device, frame._renderSemaphore, nullptr);
-			vkDestroyFence(_device, frame._renderFence, nullptr);
+			vkDestroySemaphore(_device, renderFinished, nullptr);
 		}
+
 
 		for (auto& frame : _frames)
 		{
+			vkDestroySemaphore(_device, frame._swapchainSemaphore, nullptr);
+			vkDestroyFence(_device, frame._renderFence, nullptr);
 			vkDestroyCommandPool(_device, frame._commandPool, nullptr);
 		}
 
@@ -191,7 +197,7 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::draw()
 {
-	auto& [commandPool, cmd, swapchainSemaphore, renderSemaphore, renderFence] = get_current_frame(); //???
+	auto& [commandPool, cmd, swapchainSemaphore, renderFence] = get_current_frame(); //???
 
 	VK_CHECK(vkWaitForFences(_device, 1, &renderFence, VK_TRUE, WAIT_TIME_OUT));
 	VK_CHECK(vkResetFences(_device, 1, &renderFence));
@@ -218,7 +224,7 @@ void VulkanEngine::draw()
 
 	VkCommandBufferSubmitInfo cmdInfo = vkinit::command_buffer_submit_info(cmd);
 	VkSemaphoreSubmitInfo waitInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, swapchainSemaphore);
-	VkSemaphoreSubmitInfo signalInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, renderSemaphore);
+	VkSemaphoreSubmitInfo signalInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, _renderFinishedSemaphores[swapchainImageIndex]);
 	VkSubmitInfo2 submitInfo = vkinit::submit_info(&cmdInfo, &signalInfo, &waitInfo);
 
 	VK_CHECK(vkQueueSubmit2(_graphicsQueue, 1, &submitInfo, renderFence));
@@ -227,7 +233,7 @@ void VulkanEngine::draw()
 		VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		nullptr,
 		1,
-		&renderSemaphore,
+		&_renderFinishedSemaphores[swapchainImageIndex],
 		1,
 		& _swapchain,
 		&swapchainImageIndex,

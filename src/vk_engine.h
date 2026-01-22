@@ -9,7 +9,7 @@ struct FrameData
 {
 	VkCommandPool _commandPool;
 	VkCommandBuffer _mainCommandBuffer;
-	VkSemaphore _swapchainSemaphore, _renderSemaphore;
+	VkSemaphore _swapchainSemaphore;
 	VkFence _renderFence;
 };
 
@@ -39,6 +39,7 @@ public:
 
 	FrameData _frames[FRAME_OVERLAP];
 	FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; }
+	std::vector<VkSemaphore> _renderFinishedSemaphores;
 
 	VkQueue _graphicsQueue;
 	uint32_t _graphicsQueueFamily;
