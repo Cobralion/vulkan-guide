@@ -4,26 +4,41 @@
 #pragma once
 
 #include <vk_types.h>
+#include <ranges>
+#include "DeletionQueue.h"
 
+#include "vk_images.h"
+#include "vk_descriptors.h"
+
+// Frane data structure: holds frame specific command pools, command buffers, semaphores and fences
 struct FrameData
 {
 	VkCommandPool _commandPool;
 	VkCommandBuffer _mainCommandBuffer;
 	VkSemaphore _swapchainSemaphore;
 	VkFence _renderFence;
+	DeletionQueue _deletionQueue;
 };
+
 
 constexpr uint32_t FRAME_OVERLAP = 2;
 
 class VulkanEngine {
 public:
+	static VulkanEngine& Get();
+	void Init();
+	void Run();
+	void Cleanup();
 
-	bool _isInitialized{ false };
-	int _frameNumber {0};
-	bool stop_rendering{ false };
-	VkExtent2D _windowExtent{ 1700 , 900 };
+private:
+	bool _isInitialized = false;
+	int _frameNumber = 0;
+	bool stop_rendering = false;
+	VkExtent2D _windowExtent { 1700 , 900 };
 
-	struct SDL_Window* _window{ nullptr };
+	struct SDL_Window* _window = nullptr;
+
+	DeletionQueue _mainDeletionQueue;
 
 	VkInstance _instance;
 	VkDebugUtilsMessengerEXT _debug_messenger;
@@ -44,28 +59,35 @@ public:
 	VkQueue _graphicsQueue;
 	uint32_t _graphicsQueueFamily;
 
-	static VulkanEngine& Get();
+	vkutil::AllocatedImage _drawImage;
+	VkExtent2D _drawExtend;
 
-	//initializes everything in the engine
-	void init();
+	VmaAllocator _allocator;
 
-	//shuts down the engine
-	void cleanup();
-
-	//draw loop
-	void draw();
-
-	//run main loop
-	void run();
-
+	DescriptorAllocator _globalDescriptorAllocator;
 	
-private:
+	VkDescriptorSet _drawImageDescriptor;
+	VkDescriptorSetLayout _drawImageDescriptorLayout;
 
-	void init_vulkan();
-	void init_swapchain();
-	void init_commands();
-	void init_sync_structures();
+	VkPipeline _gradientPipeline;
+	VkPipelineLayout _gradientPipelineLayout;
 
-	void create_swapchain(uint32_t width, uint32_t height);
-	void destroy_swapchain();
+
+
+	void Draw();
+
+	void InitVulkan();
+	void InitSwapchain();
+	void InitCommands();
+	void InitSyncStructures();
+
+	void CreateSwapchain(uint32_t width, uint32_t height);
+
+	void DrawBackground(VkCommandBuffer cmd);
+
+	void InitDescriptors();
+
+	void InitPipelines();
+	void InitBackgroundPipelines();
+
 };
