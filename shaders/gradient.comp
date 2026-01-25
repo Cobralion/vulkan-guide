@@ -4,7 +4,7 @@
 layout (local_size_x = 16, local_size_y = 16) in;
 
 // binds rgba float image to set 0 binding 0
-// uniform: the image is the same in each invocation of the shader
+// uniform: the image points to the same block in memmory each invocation of the shader; sampler2D would be read only
 layout(rgba16f,set = 0, binding = 0) uniform image2D image;
 
 
@@ -17,7 +17,7 @@ void main()
 
     if(texelCoord.x < size.x && texelCoord.y < size.y) // checks if the pixel is outside the image size
     {
-        vec4 color = vec4(1.0, 1.0, 0.0, 1.0);          // default color white
+        vec4 color = vec4(1.0, 1.0, 0.0, 1.0);          // default color yellow
 
         if(gl_LocalInvocationID.x != 0 && gl_LocalInvocationID.y != 0)
         {

@@ -2,6 +2,7 @@
 
 void DescriptorAllocator::InitPool(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios)
 {
+	// For each ratio, calculate the number of descriptors based on the maxSets for each type
 	std::vector<VkDescriptorPoolSize> poolSizes;
 	for (auto& ratio : poolRatios)
 	{
@@ -17,6 +18,7 @@ void DescriptorAllocator::InitPool(VkDevice device, uint32_t maxSets, std::span<
 	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 	poolInfo.pPoolSizes = poolSizes.data();
 
+	// Create the descriptor pool with ratio.ratio * maxSets descriptors for each type
 	vkCreateDescriptorPool(device, &poolInfo, nullptr, &pool);
 
 }
@@ -44,6 +46,7 @@ VkDescriptorSet DescriptorAllocator::Allocate(VkDevice devic, VkDescriptorSetLay
 	return set;
 }
 
+// Binds the given binding number to the given descriptor type
 void DescriptorLayoutBuilder::AddBinding(uint32_t binding, VkDescriptorType type)
 {
 	VkDescriptorSetLayoutBinding newBinding = {};

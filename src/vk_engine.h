@@ -30,6 +30,8 @@ public:
 	void Run();
 	void Cleanup();
 
+	void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
+
 private:
 	bool _isInitialized = false;
 	int _frameNumber = 0;
@@ -72,6 +74,12 @@ private:
 	VkPipeline _gradientPipeline;
 	VkPipelineLayout _gradientPipelineLayout;
 
+	VkFence _immFence;
+	VkCommandBuffer _immCommandBuffer;
+	VkCommandPool _immCommandPool;
+	VkDescriptorPool _imguiDescriptorPool;
+
+
 
 
 	void Draw();
@@ -87,7 +95,10 @@ private:
 
 	void InitDescriptors();
 
+	void DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView);
+
 	void InitPipelines();
 	void InitBackgroundPipelines();
+	void InitImGui();
 
 };
