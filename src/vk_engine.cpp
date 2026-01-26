@@ -273,33 +273,45 @@ void VulkanEngine::DrawBackground(VkCommandBuffer cmd)
 {
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradientPipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradientPipelineLayout, 0, 1, &_drawImageDescriptor, 0, nullptr);
+
+	ComputePushConstance pushConst
+	{
+		glm::vec4(1, 0,0,1), // red
+		glm::vec4(0, 1,0,1) // green
+	};
+
+	vkCmdPushConstants(cmd, _gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstance), &pushConst); // send the push constance to the shader
+
 	vkCmdDispatch(cmd, std::ceil(_drawExtend.width / 32.0), std::ceil(_drawExtend.height / 32.0), 1);
 }
 
 void VulkanEngine::InitDescriptors()
 {
-	// create a descriptor pool that will hold 10 sets with 1 image each
+	// create a descriptor pool that can hold up to 10 sets with 1 image each
 	std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
 	{
-		{  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1.0f  }
+		{  VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1.0f  } // 100% of possible descriptors sets will storage images
 	};
 
+	// Initialize the global descriptor pool
 	_globalDescriptorAllocator.InitPool(_device, 10, sizes);
 
-	// Binding descriptor at binding 0
+	// Creates layout for a descriptor set for a storage image at binding 0 in the shader 
 	DescriptorLayoutBuilder builder;
 	builder.AddBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-	_drawImageDescriptorLayout = builder.Build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
+	_drawImageDescriptorLayout = builder.Build(_device, VK_SHADER_STAGE_COMPUTE_BIT); // used in compute shader
 
 
 
-	_drawImageDescriptor = _globalDescriptorAllocator.Allocate(_device, _drawImageDescriptorLayout);
+	_drawImageDescriptor = _globalDescriptorAllocator.Allocate(_device, _drawImageDescriptorLayout); // Allocate descriptor set from the global pool 
 
-
+	
+	// makes the descriptor point to the draw image
 	VkDescriptorImageInfo drawImageInfo = {};
-	drawImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	drawImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL; // image layout for storage image
 	drawImageInfo.imageView = _drawImage.imageView;
 
+	// secifies the descriptor sets write operations
 	VkWriteDescriptorSet drawImageWrite{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
 	drawImageWrite.pNext = nullptr;
 	drawImageWrite.dstSet = _drawImageDescriptor;
@@ -336,8 +348,18 @@ void VulkanEngine::InitBackgroundPipelines()
 {
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 	pipelineLayoutCreateInfo.pNext = nullptr;
-	pipelineLayoutCreateInfo.pSetLayouts = &_drawImageDescriptorLayout;
+	pipelineLayoutCreateInfo.pSetLayouts = &_drawImageDescriptorLayout; // lets the pipeline know about the descriptor set layout
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
+
+	// Push constant range for compute shader
+	VkPushConstantRange pushConstantRange{};
+	pushConstantRange.offset = 0;
+	pushConstantRange.size = sizeof(ComputePushConstance);
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+	// add push constant range to the pipeline layout
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+	pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
 
 	VK_CHECK(vkCreatePipelineLayout(_device, &pipelineLayoutCreateInfo, nullptr, &_gradientPipelineLayout));
 
@@ -353,12 +375,19 @@ void VulkanEngine::InitBackgroundPipelines()
 	//	fmt::print("Failed to load salang gradient compute shader.\n");
 	//}
 
+	//VkShaderModule computeDrawShader;
+	//if (!vkutil::LoadShaderModuleSlang("triangle", "../../shaders/triangle.slang", _device, &computeDrawShader))
+	//{
+	//	fmt::print("Failed to load salang gradient compute shader.\n");
+	//}
+
 	VkShaderModule computeDrawShader;
-	if (!vkutil::LoadShaderModuleSlang("triangle", "../../shaders/triangle.slang", _device, &computeDrawShader))
+	if (!vkutil::LoadShaderModuleSlang("gradient_color_compute", "../../shaders/gradient_color_compute.slang", _device, &computeDrawShader))
 	{
 		fmt::print("Failed to load salang gradient compute shader.\n");
 	}
 
+	// Info for the compute shader stage
 	VkPipelineShaderStageCreateInfo computeShaderStageInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 	computeShaderStageInfo.pNext = nullptr;
 	computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -370,6 +399,7 @@ void VulkanEngine::InitBackgroundPipelines()
 	computePipelineCreateInfo.layout = _gradientPipelineLayout;
 	computePipelineCreateInfo.stage = computeShaderStageInfo;
 
+	// Create the compute pipeline
 	VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &_gradientPipeline));
 
 	vkDestroyShaderModule(_device, computeDrawShader, nullptr);
@@ -383,6 +413,7 @@ void VulkanEngine::InitBackgroundPipelines()
 
 void VulkanEngine::InitImGui()
 {
+	// descriptor pool for imgui
 	VkDescriptorPoolSize poolSize[] =
 		{ { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
@@ -398,12 +429,10 @@ void VulkanEngine::InitImGui()
 
 	VkDescriptorPoolCreateInfo poolInfo = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
 	poolInfo.pNext = nullptr;
-	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT; // descriptor sets can return allocation to the pool individually
 	poolInfo.maxSets = 1000;
 	poolInfo.poolSizeCount = static_cast<uint32_t>(std::size(poolSize));
 	poolInfo.pPoolSizes = poolSize;
-
-
 	
 	VK_CHECK(vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_imguiDescriptorPool));
 
@@ -538,6 +567,7 @@ void VulkanEngine::Draw()
 	// transition the swapchain image to attachment optimal for ImGui rendering
 	vkutil::TransitionImage(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
 
+	// render imgui on top of the swapchain image
 	DrawImGui(cmd, _swapchainImageViews[swapchainImageIndex]);
 
 	// transition the swapchain image to present layout

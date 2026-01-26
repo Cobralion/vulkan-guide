@@ -41,20 +41,28 @@ void vkutil::CopyImageToImage(VkCommandBuffer cmd, VkImage srcImage, VkImage dst
 {
 	VkImageBlit2 blitRegion { .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr };
 
+	blitRegion.srcOffsets[0].x = 0; // Bounding box starting at (0,0)
+	blitRegion.srcOffsets[0].y = 0;
+	blitRegion.srcOffsets[0].z = 0;
+
 	blitRegion.srcOffsets[1].x = srcSize.width;
 	blitRegion.srcOffsets[1].y = srcSize.height;
-	blitRegion.srcOffsets[1].z = 1;
+	blitRegion.srcOffsets[1].z = 1; // The Vulkan spec states: If srcImage is of type VK_IMAGE_TYPE_1D or VK_IMAGE_TYPE_2D, then for each element of pRegions, srcOffsets[0].z must be 0 and srcOffsets[1].z must be 1
+
+	blitRegion.dstOffsets[0].x = 0; // Bounding box starting at (0,0)
+	blitRegion.dstOffsets[0].y = 0;
+	blitRegion.dstOffsets[0].z = 0;
 
 	blitRegion.dstOffsets[1].x = dstSize.width;
 	blitRegion.dstOffsets[1].y = dstSize.height;
-	blitRegion.dstOffsets[1].z = 1;
+	blitRegion.dstOffsets[1].z = 1; // The Vulkan spec states : If dstImage is of type VK_IMAGE_TYPE_1D or VK_IMAGE_TYPE_2D, then for each element of pRegions, dstOffsets[0].z must be 0 and dstOffsets[1].z must be 1 (https ://docs.vulkan.org/spec/latest/chapters/copies.html#VUID-VkBlitImageInfo2-dstImage-00252)
 
-	blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // color is copied
 	blitRegion.srcSubresource.mipLevel = 0;
 	blitRegion.srcSubresource.baseArrayLayer = 0;
 	blitRegion.srcSubresource.layerCount = 1;
 
-	blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // color is copied
 	blitRegion.dstSubresource.mipLevel = 0;
 	blitRegion.dstSubresource.baseArrayLayer = 0;
 	blitRegion.dstSubresource.layerCount = 1;
@@ -68,7 +76,7 @@ void vkutil::CopyImageToImage(VkCommandBuffer cmd, VkImage srcImage, VkImage dst
 		.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		.regionCount = 1,
 		.pRegions = &blitRegion,
-		.filter = VK_FILTER_LINEAR
+		.filter = VK_FILTER_LINEAR // only for scaling
 	};
 
 	vkCmdBlitImage2(cmd, &blitImageInfo); // VkCmdCopyImage is faster but way less versatile -> later use fragment shader

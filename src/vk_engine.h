@@ -20,6 +20,14 @@ struct FrameData
 	DeletionQueue _deletionQueue;
 };
 
+struct ComputePushConstance
+{
+	glm::vec4 data0;
+	glm::vec4 data1;
+	glm::vec4 data2;
+	glm::vec4 data3;
+};
+
 
 constexpr uint32_t FRAME_OVERLAP = 2;
 
