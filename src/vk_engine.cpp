@@ -91,12 +91,17 @@ void VulkanEngine::InitVulkan()
 	features12.bufferDeviceAddress = VK_TRUE;
 	features12.descriptorIndexing = VK_TRUE;
 
+	//vulkan 1.2
+	VkPhysicalDeviceVulkan11Features features11{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+	features11.shaderDrawParameters = VK_TRUE;
+
 	// Select physical device with features: dynamicRendering, synchronization2, bufferDeviceAddress, descriptorIndexing
 	vkb::PhysicalDeviceSelector selector{ vkbInstance };
 	vkb::PhysicalDevice physicalDevice = selector
 		.set_minimum_version(1, 3)
 		.set_required_features_13(features13)
 		.set_required_features_12(features12)
+		.set_required_features_11(features11)
 		.set_surface(_surface)
 		.select()
 		.value();
@@ -193,6 +198,56 @@ void VulkanEngine::InitSyncStructures()
 		});
 }
 
+void VulkanEngine::InitTrianglePipeline()
+{
+	VkShaderModule vertexShader;
+	if (!vkutil::LoadShaderModuleSlang("colored_triangle_vert", "../../shaders/colored_triangle_vert.slang", _device, &vertexShader))
+	{
+		fmt::print("Failed to load vertex shader.\n");
+	}
+	else
+	{
+		fmt::print("Loaded vertex shader.\n");
+	}
+
+	VkShaderModule fragmentShader;
+	if (!vkutil::LoadShaderModuleSlang("colored_triangle_frag", "../../shaders/colored_triangle_frag.slang", _device, &fragmentShader))
+	{
+		fmt::print("Failed to load fragment shader.\n");
+	}
+	else
+	{
+		fmt::print("Loaded fragment shader.\n");
+	}
+
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = vkinit::pipeline_layout_create_info();
+	VK_CHECK(vkCreatePipelineLayout(_device, &pipelineLayoutCreateInfo, nullptr, &_trianglePipelineLayout));
+
+	vkutil::PipelineBuilder pipelineBuilder;
+
+	pipelineBuilder.SetPipelineLayout(_trianglePipelineLayout);
+	pipelineBuilder.SetShaders(vertexShader, fragmentShader);
+	pipelineBuilder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipelineBuilder.SetPolygonMode(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.SetMultisamplingNone();
+	pipelineBuilder.DisableDepthtest();
+	pipelineBuilder.DisableBlending();
+	pipelineBuilder.SetColorAttachmentFormat(_drawImage.imageFormat);
+	pipelineBuilder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+	_trianglePipeline = pipelineBuilder.BuildPipeline(_device);
+
+	vkDestroyShaderModule(_device, vertexShader, nullptr);
+	vkDestroyShaderModule(_device, fragmentShader, nullptr);
+
+	_mainDeletionQueue.PushFunction([&]()
+		{
+			vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
+			vkDestroyPipeline(_device, _trianglePipeline, nullptr);
+		});
+
+}
+
 
 // Swapchain:
 // Decouples the rendering from the windowing system
@@ -271,16 +326,12 @@ void VulkanEngine::CreateSwapchain(uint32_t width, uint32_t height)
 
 void VulkanEngine::DrawBackground(VkCommandBuffer cmd)
 {
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradientPipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradientPipelineLayout, 0, 1, &_drawImageDescriptor, 0, nullptr);
+	ComputeEffect& effect = _backgroundEffect[_currentBackgroundEffect];
 
-	ComputePushConstance pushConst
-	{
-		glm::vec4(1, 0,0,1), // red
-		glm::vec4(0, 1,0,1) // green
-	};
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.layout, 0, 1, &_drawImageDescriptor, 0, nullptr);
 
-	vkCmdPushConstants(cmd, _gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstance), &pushConst); // send the push constance to the shader
+	vkCmdPushConstants(cmd, effect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data); // send the push constance to the shader
 
 	vkCmdDispatch(cmd, std::ceil(_drawExtend.width / 32.0), std::ceil(_drawExtend.height / 32.0), 1);
 }
@@ -305,7 +356,7 @@ void VulkanEngine::InitDescriptors()
 
 	_drawImageDescriptor = _globalDescriptorAllocator.Allocate(_device, _drawImageDescriptorLayout); // Allocate descriptor set from the global pool 
 
-	
+
 	// makes the descriptor point to the draw image
 	VkDescriptorImageInfo drawImageInfo = {};
 	drawImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL; // image layout for storage image
@@ -342,6 +393,7 @@ void VulkanEngine::DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView)
 void VulkanEngine::InitPipelines()
 {
 	InitBackgroundPipelines();
+	InitTrianglePipeline();
 }
 
 void VulkanEngine::InitBackgroundPipelines()
@@ -354,14 +406,15 @@ void VulkanEngine::InitBackgroundPipelines()
 	// Push constant range for compute shader
 	VkPushConstantRange pushConstantRange{};
 	pushConstantRange.offset = 0;
-	pushConstantRange.size = sizeof(ComputePushConstance);
+	pushConstantRange.size = sizeof(ComputePushConstants);
 	pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
 	// add push constant range to the pipeline layout
 	pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
 	pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
 
-	VK_CHECK(vkCreatePipelineLayout(_device, &pipelineLayoutCreateInfo, nullptr, &_gradientPipelineLayout));
+	VkPipelineLayout pipelineLayout;
+	VK_CHECK(vkCreatePipelineLayout(_device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout));
 
 	//VkShaderModule computeDrawShader;
 	//if (!vkutil::LoadShaderModuleSPV("../../shaders/gradient.comp.spv", _device, &computeDrawShader))
@@ -381,8 +434,14 @@ void VulkanEngine::InitBackgroundPipelines()
 	//	fmt::print("Failed to load salang gradient compute shader.\n");
 	//}
 
-	VkShaderModule computeDrawShader;
-	if (!vkutil::LoadShaderModuleSlang("gradient_color_compute", "../../shaders/gradient_color_compute.slang", _device, &computeDrawShader))
+	VkShaderModule gradientComputeDrawShader;
+	if (!vkutil::LoadShaderModuleSlang("gradient_color_compute", "../../shaders/gradient_color_compute.slang", _device, &gradientComputeDrawShader))
+	{
+		fmt::print("Failed to load salang gradient compute shader.\n");
+	}
+
+	VkShaderModule skyComputeDrawShader;
+	if (!vkutil::LoadShaderModuleSlang("sky_compute", "../../shaders/sky_compute.slang", _device, &skyComputeDrawShader))
 	{
 		fmt::print("Failed to load salang gradient compute shader.\n");
 	}
@@ -391,22 +450,41 @@ void VulkanEngine::InitBackgroundPipelines()
 	VkPipelineShaderStageCreateInfo computeShaderStageInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 	computeShaderStageInfo.pNext = nullptr;
 	computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	computeShaderStageInfo.module = computeDrawShader;
+	computeShaderStageInfo.module = gradientComputeDrawShader;
 	computeShaderStageInfo.pName = "main";
 
 	VkComputePipelineCreateInfo computePipelineCreateInfo{ .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
 	computePipelineCreateInfo.pNext = nullptr;
-	computePipelineCreateInfo.layout = _gradientPipelineLayout;
+	computePipelineCreateInfo.layout = pipelineLayout;
 	computePipelineCreateInfo.stage = computeShaderStageInfo;
 
+	ComputeEffect gradientEffect{ "gradient", VK_NULL_HANDLE, pipelineLayout,
+		{
+		glm::vec4(0, 0,0,1),
+		glm::vec4(0, 0,0,1)
+		}
+	};
+
 	// Create the compute pipeline
-	VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &_gradientPipeline));
+	VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &gradientEffect.pipeline));
 
-	vkDestroyShaderModule(_device, computeDrawShader, nullptr);
+	computePipelineCreateInfo.stage.module = skyComputeDrawShader;
+	ComputeEffect skyEffect{ "sky", VK_NULL_HANDLE, pipelineLayout,
+	{glm::vec4(0.1, 0.2, 0.4 ,0.97)} };
 
-	_mainDeletionQueue.PushFunction([&]() {
-		vkDestroyPipelineLayout(_device, _gradientPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, _gradientPipeline, nullptr);
+	// Create the compute pipeline
+	VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &skyEffect.pipeline));
+
+	_backgroundEffect.push_back(gradientEffect);
+	_backgroundEffect.push_back(skyEffect);
+
+	vkDestroyShaderModule(_device, gradientComputeDrawShader, nullptr);
+	vkDestroyShaderModule(_device, skyComputeDrawShader, nullptr);
+
+	_mainDeletionQueue.PushFunction([=]() {
+		vkDestroyPipelineLayout(_device, pipelineLayout, nullptr);
+		vkDestroyPipeline(_device, skyEffect.pipeline, nullptr);
+		vkDestroyPipeline(_device, gradientEffect.pipeline, nullptr);
 		});
 
 }
@@ -415,25 +493,25 @@ void VulkanEngine::InitImGui()
 {
 	// descriptor pool for imgui
 	VkDescriptorPoolSize poolSize[] =
-		{ { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+	{ { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+	{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+	{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+	{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+	{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
 
-	VkDescriptorPoolCreateInfo poolInfo = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+	VkDescriptorPoolCreateInfo poolInfo = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	poolInfo.pNext = nullptr;
 	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT; // descriptor sets can return allocation to the pool individually
 	poolInfo.maxSets = 1000;
 	poolInfo.poolSizeCount = static_cast<uint32_t>(std::size(poolSize));
 	poolInfo.pPoolSizes = poolSize;
-	
+
 	VK_CHECK(vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_imguiDescriptorPool));
 
 	ImGui::CreateContext();
@@ -528,6 +606,35 @@ void VulkanEngine::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& fu
 	VK_CHECK(vkWaitForFences(_device, 1, &_immFence, VK_TRUE, 9999999999));
 }
 
+void VulkanEngine::DrawGeometry(VkCommandBuffer cmd)
+{
+	VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
+	VkRenderingInfo renderingInfo = vkinit::rendering_info(_drawExtend, &colorAttachment, nullptr);
+	vkCmdBeginRendering(cmd, &renderingInfo);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
+
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = static_cast<float>(_drawExtend.width);
+	viewport.height = static_cast<float>(_drawExtend.height);
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = { _drawExtend.width, _drawExtend.height };
+
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	vkCmdEndRendering(cmd);
+}
+
 void VulkanEngine::Draw()
 {
 	auto& [commandPool, cmd, swapchainSemaphore, renderFence, deletionQueue] = get_current_frame();
@@ -557,8 +664,12 @@ void VulkanEngine::Draw()
 
 	DrawBackground(cmd);
 
+	vkutil::TransitionImage(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
+
+	DrawGeometry(cmd);
+
 	// transition the draw image and the swapchain image into their correct transfer layouts-
-	vkutil::TransitionImage(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	vkutil::TransitionImage(cmd, _drawImage.image, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	vkutil::TransitionImage(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// copy from the draw image to the swapchain image
@@ -637,7 +748,21 @@ void VulkanEngine::Run()
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
-		ImGui::ShowDemoWindow();
+		if (ImGui::Begin("Background Settings"))
+		{
+			ComputeEffect& selected = _backgroundEffect[_currentBackgroundEffect];
+
+			ImGui::Text("Selected Effect: ", selected.name);
+			ImGui::SliderInt("Effect Index", &_currentBackgroundEffect, 0, static_cast<int>(_backgroundEffect.size()) - 1);
+
+			ImGui::InputFloat4("Data0", reinterpret_cast<float*>(&selected.data.data0));
+			ImGui::InputFloat4("Data1", reinterpret_cast<float*>(&selected.data.data1));
+			ImGui::InputFloat4("Data2", reinterpret_cast<float*>(&selected.data.data2));
+			ImGui::InputFloat4("Data3", reinterpret_cast<float*>(&selected.data.data3));
+		}
+		ImGui::End();
+
+
 		ImGui::Render();
 
 		Draw();

@@ -20,12 +20,21 @@ struct FrameData
 	DeletionQueue _deletionQueue;
 };
 
-struct ComputePushConstance
+struct ComputePushConstants
 {
 	glm::vec4 data0;
 	glm::vec4 data1;
 	glm::vec4 data2;
 	glm::vec4 data3;
+};
+
+struct ComputeEffect
+{
+	const char* name;
+
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+	ComputePushConstants data;
 };
 
 
@@ -79,23 +88,29 @@ private:
 	VkDescriptorSet _drawImageDescriptor;
 	VkDescriptorSetLayout _drawImageDescriptorLayout;
 
-	VkPipeline _gradientPipeline;
-	VkPipelineLayout _gradientPipelineLayout;
+	//VkPipeline _gradientPipeline;
+	//VkPipelineLayout _gradientPipelineLayout;
 
 	VkFence _immFence;
 	VkCommandBuffer _immCommandBuffer;
 	VkCommandPool _immCommandPool;
 	VkDescriptorPool _imguiDescriptorPool;
 
+	int32_t _currentBackgroundEffect{ 0 };
+	std::vector<ComputeEffect> _backgroundEffect;
+
+	VkPipelineLayout _trianglePipelineLayout;
+	VkPipeline _trianglePipeline;
 
 
-
+	void DrawGeometry(VkCommandBuffer cmd);
 	void Draw();
 
 	void InitVulkan();
 	void InitSwapchain();
 	void InitCommands();
 	void InitSyncStructures();
+	void InitTrianglePipeline();
 
 	void CreateSwapchain(uint32_t width, uint32_t height);
 
