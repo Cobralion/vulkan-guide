@@ -9,6 +9,7 @@
 
 #include "vk_images.h"
 #include "vk_descriptors.h"
+#include "vk_loader.h"
 
 // Frane data structure: holds frame specific command pools, command buffers, semaphores and fences
 struct FrameData
@@ -48,6 +49,7 @@ public:
 	void Cleanup();
 
 	void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
+	GPUMeshBuffers UploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
 private:
 	bool _isInitialized = false;
@@ -102,26 +104,37 @@ private:
 	VkPipelineLayout _trianglePipelineLayout;
 	VkPipeline _trianglePipeline;
 
+	VkPipelineLayout _meshPipelineLayout;
+	VkPipeline _meshPipeline;
 
-	void DrawGeometry(VkCommandBuffer cmd);
-	void Draw();
+	GPUMeshBuffers _rectangle;
+
+	std::vector<std::shared_ptr<MeshAsset>> _testMeshes;
+
+
+
 
 	void InitVulkan();
 	void InitSwapchain();
 	void InitCommands();
 	void InitSyncStructures();
+	void InitDescriptors();
+	void InitPipelines();
+	void InitImGui();
+
+	void InitBackgroundPipelines();
 	void InitTrianglePipeline();
+	void InitMeshPipeline();
 
 	void CreateSwapchain(uint32_t width, uint32_t height);
 
+	AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	void DestroyBuffer(AllocatedBuffer buffer);
+
+	void Draw();
 	void DrawBackground(VkCommandBuffer cmd);
-
-	void InitDescriptors();
-
+	void DrawGeometry(VkCommandBuffer cmd);
 	void DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView);
 
-	void InitPipelines();
-	void InitBackgroundPipelines();
-	void InitImGui();
-
+	void InitDefaultData();
 };

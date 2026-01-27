@@ -99,6 +99,7 @@ void vkutil::PipelineBuilder::Clear()
 	_shaderStages.clear();
 }
 
+// https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics/Fixed_functions
 VkPipeline vkutil::PipelineBuilder::BuildPipeline(VkDevice device)
 {
 	// dynamic viewport
@@ -107,6 +108,7 @@ VkPipeline vkutil::PipelineBuilder::BuildPipeline(VkDevice device)
 	viewportState.viewportCount = 1;
 	viewportState.scissorCount = 1;
 
+	// color blending - no blending, just write to the color attachment
 	VkPipelineColorBlendStateCreateInfo colorBlending{ .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
 	colorBlending.pNext = nullptr;
 	colorBlending.logicOpEnable = VK_FALSE;
@@ -120,11 +122,11 @@ VkPipeline vkutil::PipelineBuilder::BuildPipeline(VkDevice device)
 
 	VkGraphicsPipelineCreateInfo pipelineInfo{ .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 	pipelineInfo.pNext = nullptr;
-	pipelineInfo.stageCount = static_cast<uint32_t>(_shaderStages.size());
+	pipelineInfo.stageCount = static_cast<uint32_t>(_shaderStages.size()); // num of shader stages
 	pipelineInfo.pStages = _shaderStages.data();
-	pipelineInfo.pVertexInputState = &vertexInputInfo;
+	pipelineInfo.pVertexInputState = &vertexInputInfo; // we do not use the vulkan vertex input
 	pipelineInfo.pInputAssemblyState = &_inputAssembly;
-	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pViewportState = &viewportState; // we use a dynamic viewport
 	pipelineInfo.pRasterizationState = &_rasterizer;
 	pipelineInfo.pMultisampleState = &_multisampling;
 	pipelineInfo.pDepthStencilState = &_depthStencil;
@@ -132,6 +134,7 @@ VkPipeline vkutil::PipelineBuilder::BuildPipeline(VkDevice device)
 	pipelineInfo.layout = _pipelineLayout;
 	pipelineInfo.pNext = &_renderInfo;
 
+	// alow dynamic states of viewport and scissor
 	VkDynamicState dynamicStates[] = {
 		VK_DYNAMIC_STATE_VIEWPORT,
 		VK_DYNAMIC_STATE_SCISSOR
@@ -167,20 +170,20 @@ void vkutil::PipelineBuilder::SetShaders(VkShaderModule vertex, VkShaderModule f
 
 void vkutil::PipelineBuilder::SetInputTopology(VkPrimitiveTopology topology)
 {
-	_inputAssembly.topology = topology;
-	_inputAssembly.primitiveRestartEnable = VK_FALSE;
+	_inputAssembly.topology = topology; // should vertex be transformed to points, lines or triangle
+	_inputAssembly.primitiveRestartEnable = VK_FALSE; // for optimization like reusing vertices
 }
 
 void vkutil::PipelineBuilder::SetPolygonMode(VkPolygonMode polygonMode)
 {
-	_rasterizer.polygonMode = polygonMode; // wireframe or fill
+	_rasterizer.polygonMode = polygonMode; // points, lines, fill
 	_rasterizer.lineWidth = 1.0f;
 }
 
 void vkutil::PipelineBuilder::SetCullMode(VkCullModeFlags cullMode, VkFrontFace frontFace)
 {
-	_rasterizer.cullMode = cullMode;
-	_rasterizer.frontFace = frontFace;
+	_rasterizer.cullMode = cullMode; // Back-face culling: determines whether a polygon that is part of a solid needs to be drawn
+	_rasterizer.frontFace = frontFace; // clock or counter-clockwise
 }
 
 void vkutil::PipelineBuilder::SetMultisamplingNone()
