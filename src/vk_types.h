@@ -39,22 +39,22 @@ struct AllocatedBuffer
 
 struct Vertex
 {
-	glm::vec3 position;
-    float uv_x;
-    glm::vec3 normal;
-    float uv_y;
-    glm::vec4 color;
+	glm::vec3 position; // positon
+	float uv_x;         // uv x coord -> x cord of the texture
+    glm::vec3 normal;   // normals
+    float uv_y;         // uv y coord -> y cord of the texture
+    glm::vec4 color;    // color
 };
 
 struct GPUMeshBuffers
 {
-    AllocatedBuffer indexBuffer;
-	AllocatedBuffer vertexBuffer;
+	AllocatedBuffer indexBuffer;        // buffer for the indices
+	AllocatedBuffer vertexBuffer;       // buffer for the vertices
     VkDeviceAddress vertexBufferAddress;
 };
 
 struct GPUDrawPushConstants
 {
-    glm::mat4 worldMatrix;
-    VkDeviceAddress vertexBuffer;
+	glm::mat4 worldMatrix;          // world matrix
+	VkDeviceAddress vertexBuffer;   // address of the vertex buffer for access in shader
 };

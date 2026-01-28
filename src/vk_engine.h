@@ -81,6 +81,7 @@ private:
 	uint32_t _graphicsQueueFamily;
 
 	vkutil::AllocatedImage _drawImage;
+	vkutil::AllocatedImage _depthImage;
 	VkExtent2D _drawExtend;
 
 	VmaAllocator _allocator;

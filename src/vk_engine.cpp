@@ -16,6 +16,8 @@
 
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 
 #include "vk_pipelines.h"
 
@@ -137,6 +139,30 @@ void VulkanEngine::InitVulkan()
 void VulkanEngine::InitSwapchain()
 {
 	CreateSwapchain(_windowExtent.width, _windowExtent.height);
+
+	// Init depth image
+	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+	_depthImage.imageExtent = { _windowExtent.width, _windowExtent.height, 1 };
+	VkImageUsageFlags depthUsage{};
+	depthUsage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+	// Allocation info for depth image
+	VmaAllocationCreateInfo depthImageAllocCreateInfo{};
+	depthImageAllocCreateInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY; // image can only be used by gpu -> lives in video memory
+	depthImageAllocCreateInfo.requiredFlags = static_cast<VkMemoryPropertyFlags>(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT); // memory is device local
+
+	VkImageCreateInfo depthImageCreateInfo = vkinit::image_create_info(_depthImage.imageFormat, depthUsage, _depthImage.imageExtent);
+	vmaCreateImage(_allocator, &depthImageCreateInfo, &depthImageAllocCreateInfo, &_depthImage.image, &_depthImage.allocation, nullptr);
+
+	VkImageViewCreateInfo depthImageViewCreateInfo = vkinit::imageview_create_info(_depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+	VK_CHECK(vkCreateImageView(_device, &depthImageViewCreateInfo, nullptr, &_depthImage.imageView));
+
+	_mainDeletionQueue.PushFunction([=]()
+		{
+			vkDestroyImageView(_device, _depthImage.imageView, nullptr);
+			vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
+		});
 }
 
 void VulkanEngine::InitCommands()
@@ -235,7 +261,7 @@ void VulkanEngine::InitTrianglePipeline()
 	pipelineBuilder.DisableDepthtest();
 	pipelineBuilder.DisableBlending();
 	pipelineBuilder.SetColorAttachmentFormat(_drawImage.imageFormat); // use the draw image format
-	pipelineBuilder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+	pipelineBuilder.SetDepthFormat(_depthImage.imageFormat);
 	_trianglePipeline = pipelineBuilder.BuildPipeline(_device);
 
 	vkDestroyShaderModule(_device, vertexShader, nullptr);
@@ -251,7 +277,7 @@ void VulkanEngine::InitTrianglePipeline()
 void VulkanEngine::InitMeshPipeline()
 {
 	VkShaderModule vertexShader;
-	if (!vkutil::LoadShaderModuleSPV( "../../shaders/colored_triangle_mesh.vert.spv", _device, &vertexShader))
+	if (!vkutil::LoadShaderModuleSPV("../../shaders/colored_triangle_mesh.vert.spv", _device, &vertexShader))
 	{
 		fmt::print("Failed to load vertex shader.\n");
 	}
@@ -288,10 +314,10 @@ void VulkanEngine::InitMeshPipeline()
 	pipelineBuilder.SetPolygonMode(VK_POLYGON_MODE_FILL); // default
 	pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE); // no culling, default
 	pipelineBuilder.SetMultisamplingNone();
-	pipelineBuilder.DisableDepthtest();
+	pipelineBuilder.EnableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL); // 0 far plane, 1 near plane -> only render pixel if depth value is greater or equal
 	pipelineBuilder.DisableBlending();
 	pipelineBuilder.SetColorAttachmentFormat(_drawImage.imageFormat); // use the draw image format
-	pipelineBuilder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+	pipelineBuilder.SetDepthFormat(_depthImage.imageFormat);
 	_meshPipeline = pipelineBuilder.BuildPipeline(_device);
 
 	vkDestroyShaderModule(_device, vertexShader, nullptr);
@@ -479,15 +505,18 @@ GPUMeshBuffers VulkanEngine::UploadMesh(std::span<uint32_t> indices, std::span<V
 
 	GPUMeshBuffers newSurface{};
 
+	// create gpu local buffer for vertices
 	newSurface.vertexBuffer = CreateBuffer(
 		vertexBufferSize,
-		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT /* Storage buffers (SSBO) */ | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT /* for memcopy */,
+		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT /* Storage buffers (SSBO), generic read/write */ | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT /* access form shader via address */ | VK_BUFFER_USAGE_TRANSFER_DST_BIT /* for memcopy */,
 		VMA_MEMORY_USAGE_GPU_ONLY
 	);
 
+	// get the device address for the vertex buffer -> access in shader via pointer
 	VkBufferDeviceAddressInfo vertexBufferAddressInfo{ VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, nullptr, newSurface.vertexBuffer.buffer };
 	newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_device, &vertexBufferAddressInfo);
 
+	// create gpu local buffer for indices
 	newSurface.indexBuffer = CreateBuffer(
 		indexBufferSize,
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT /* for memcopy */,
@@ -495,7 +524,7 @@ GPUMeshBuffers VulkanEngine::UploadMesh(std::span<uint32_t> indices, std::span<V
 	);
 
 	// write to temp stage buffer -> copy to gpu local buffer
-
+	// create staging buffer, rw cpu only
 	AllocatedBuffer staging = CreateBuffer(
 		vertexBufferSize + indexBufferSize,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT /* copy src */,
@@ -504,6 +533,7 @@ GPUMeshBuffers VulkanEngine::UploadMesh(std::span<uint32_t> indices, std::span<V
 
 	void* data = staging.allocation->GetMappedData(); // get cpu pointer to the mapped memory
 
+	// copy vertex and index data to the staging buffer
 	memcpy(data, vertices.data(), vertexBufferSize);
 	memcpy(static_cast<uint8_t*>(data) + vertexBufferSize, indices.data(), indexBufferSize);
 
@@ -701,6 +731,12 @@ void VulkanEngine::Cleanup()
 			frame._deletionQueue.Flush();
 		}
 
+		for (auto& mesh : _testMeshes)
+		{
+			DestroyBuffer(mesh->meshBuffers.vertexBuffer);
+			DestroyBuffer(mesh->meshBuffers.indexBuffer);
+		}
+
 		_mainDeletionQueue.Flush();
 
 		vkDestroySwapchainKHR(_device, _swapchain, nullptr);
@@ -719,7 +755,7 @@ void VulkanEngine::Cleanup()
 	loadedEngine = nullptr;
 }
 
-void VulkanEngine::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
+void VulkanEngine::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) // should be on a background thread
 {
 	VK_CHECK(vkResetFences(_device, 1, &_immFence));
 	VK_CHECK(vkResetCommandBuffer(_immCommandBuffer, 0));
@@ -741,7 +777,8 @@ void VulkanEngine::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& fu
 void VulkanEngine::DrawGeometry(VkCommandBuffer cmd)
 {
 	VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL); // color attachment for the renderer
-	VkRenderingInfo renderingInfo = vkinit::rendering_info(_drawExtend, &colorAttachment, nullptr);
+	VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_depthImage.imageView, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL); // depth attachment for the renderer //??
+	VkRenderingInfo renderingInfo = vkinit::rendering_info(_drawExtend, &colorAttachment, &depthAttachment);
 	vkCmdBeginRendering(cmd, &renderingInfo); // start rendering
 
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline); // bind the triangle pipeline
@@ -766,20 +803,35 @@ void VulkanEngine::DrawGeometry(VkCommandBuffer cmd)
 
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 
+	// draw rectangle
+
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
 
-	GPUDrawPushConstants pushConstants
+	GPUDrawPushConstants rectPushConstants
 	{
 		glm::mat4(1.0f),
 		_rectangle.vertexBufferAddress
 	};
 
-	vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+	vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &rectPushConstants);
 	vkCmdBindIndexBuffer(cmd, _rectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 	vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
 
-	pushConstants.vertexBuffer = _testMeshes[2]->meshBuffers.vertexBufferAddress;
-	vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+	// draw test mesh
+
+	glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3{ 0,0,-5 });
+	glm::mat4 proj = glm::perspective(glm::radians(70.0f), static_cast<float>(_drawExtend.width) / static_cast<float>(_drawExtend.height), 10000.0f, 0.1f); //??
+
+	proj[1][1] *= -1; // flip y for vulkan
+
+
+	GPUDrawPushConstants testPushConstants
+	{
+		proj * view,
+		_testMeshes[2]->meshBuffers.vertexBufferAddress
+	};
+
+	vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &testPushConstants);
 	vkCmdBindIndexBuffer(cmd, _testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 	vkCmdDrawIndexed(cmd, _testMeshes[2]->surfaces[0].count, 1, _testMeshes[2]->surfaces[0].startIndex, 0, 0);
 	vkCmdEndRendering(cmd);
@@ -815,6 +867,7 @@ void VulkanEngine::Draw()
 	DrawBackground(cmd);
 
 	vkutil::TransitionImage(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
+	vkutil::TransitionDepthImage(cmd, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
 
 	DrawGeometry(cmd);
 
@@ -952,7 +1005,7 @@ void VulkanEngine::InitDefaultData() {
 		{
 			DestroyBuffer(buffer->meshBuffers.vertexBuffer);
 			DestroyBuffer(buffer->meshBuffers.indexBuffer);
-			
+
 		}
 		});
 

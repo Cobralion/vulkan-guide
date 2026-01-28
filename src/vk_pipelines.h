@@ -32,5 +32,6 @@ namespace vkutil {
 		void SetColorAttachmentFormat(VkFormat format);
 		void SetDepthFormat(VkFormat format);
 		void DisableDepthtest();
+		void EnableDepthtest(bool depthWriteEnabled, VkCompareOp op);
 	};
 };

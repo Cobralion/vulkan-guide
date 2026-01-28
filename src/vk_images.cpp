@@ -6,7 +6,7 @@ void vkutil::TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout c
 {
 	// VK_IMAGE_ASPECT_DEPTH_BIT: depth/stencil buffers
 	// VK_IMAGE_ASPECT_COLOR_BIT: rgba textures
-	VkImageAspectFlags aspectFlags = (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+	// VkImageAspectFlags aspectFlags = (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT; // doesn't work
 
 	VkImageMemoryBarrier2 imageBarrier{
 		VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -20,7 +20,39 @@ void vkutil::TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout c
 		VK_QUEUE_FAMILY_IGNORED,
 		VK_QUEUE_FAMILY_IGNORED,
 		image,
-		vkinit::image_subresource_range(aspectFlags)
+		vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT)
+	};
+
+	// mipmaps: downscaled versions of the original image for better performance when viewed from a distance / prevents aliasing
+	// array layers: layers in a texture array, useful for storing multiple textures in a single image resource
+
+	VkDependencyInfo dependencyInfo{
+	.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+	.pNext = nullptr,
+	.imageMemoryBarrierCount = 1,
+	.pImageMemoryBarriers = &imageBarrier
+	};
+
+	vkCmdPipelineBarrier2(cmd, &dependencyInfo);
+}
+
+void vkutil::TransitionDepthImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
+{
+
+
+	VkImageMemoryBarrier2 imageBarrier{
+		VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+		nullptr,
+		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, // wait for all previous GPU work to complete
+		VK_ACCESS_2_MEMORY_WRITE_BIT, // make sure writes are flushed to the image
+		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, // blocks all subsequent commands from executing until the transition finishes
+		VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT, // invalidates caches so the next command doesn't read "stale" old data
+		currentLayout,
+		newLayout, // reorganize the image in gpu memory
+		VK_QUEUE_FAMILY_IGNORED,
+		VK_QUEUE_FAMILY_IGNORED,
+		image,
+		vkinit::image_subresource_range(VK_IMAGE_ASPECT_DEPTH_BIT) // VK_IMAGE_ASPECT_DEPTH_BIT: depth/stencil buffers
 	};
 
 	// mipmaps: downscaled versions of the original image for better performance when viewed from a distance / prevents aliasing

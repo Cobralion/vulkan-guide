@@ -226,3 +226,16 @@ void vkutil::PipelineBuilder::DisableDepthtest()
 	_depthStencil.minDepthBounds = 0.f;
 	_depthStencil.maxDepthBounds = 1.f;
 }
+
+void vkutil::PipelineBuilder::EnableDepthtest(bool depthWriteEnabled, VkCompareOp op)
+{
+	_depthStencil.depthTestEnable = VK_TRUE;
+	_depthStencil.depthWriteEnable = depthWriteEnabled;
+	_depthStencil.depthCompareOp = op;
+	_depthStencil.depthBoundsTestEnable = VK_FALSE;
+	_depthStencil.stencilTestEnable = VK_FALSE;
+	_depthStencil.front = {};
+	_depthStencil.back = {};
+	_depthStencil.minDepthBounds = 0.f;
+	_depthStencil.maxDepthBounds = 1.f;
+}
