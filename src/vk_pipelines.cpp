@@ -202,6 +202,33 @@ void vkutil::PipelineBuilder::DisableBlending()
 	_colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 }
 
+// outColor = srcColor * srcColorBlendFactor <op> dstColor * dstColorBlendFactor;
+//outColor = srcColor.rgb * srcColor.a + dstColor.rgb * 1.0
+void vkutil::PipelineBuilder::EnableBlendingAdditive()
+{
+	_colorBlendAttachment.blendEnable = VK_TRUE;
+	_colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA; // pipeline value
+	_colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; // current image value
+	_colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	_colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	_colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	_colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+	_colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+}
+
+// outColor = srcColor.rgb * srcColor.a + dstColor.rgb * (1.0 - srcColor.a)
+void vkutil::PipelineBuilder::EnableBlendingAlphablend()
+{
+	_colorBlendAttachment.blendEnable = VK_TRUE;
+	_colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	_colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	_colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	_colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	_colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	_colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+	_colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+}
+
 void vkutil::PipelineBuilder::SetColorAttachmentFormat(VkFormat format)
 {
 	_colorAttachmentFormat = format;

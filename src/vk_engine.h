@@ -55,7 +55,7 @@ private:
 	bool _isInitialized = false;
 	int _frameNumber = 0;
 	bool stop_rendering = false;
-	VkExtent2D _windowExtent { 1700 , 900 };
+	VkExtent2D _windowExtent{ 1700 , 900 };
 
 	struct SDL_Window* _window = nullptr;
 
@@ -82,17 +82,14 @@ private:
 
 	vkutil::AllocatedImage _drawImage;
 	vkutil::AllocatedImage _depthImage;
-	VkExtent2D _drawExtend;
+	VkExtent2D _drawExtent;
 
 	VmaAllocator _allocator;
 
 	DescriptorAllocator _globalDescriptorAllocator;
-	
+
 	VkDescriptorSet _drawImageDescriptor;
 	VkDescriptorSetLayout _drawImageDescriptorLayout;
-
-	//VkPipeline _gradientPipeline;
-	//VkPipelineLayout _gradientPipelineLayout;
 
 	VkFence _immFence;
 	VkCommandBuffer _immCommandBuffer;
@@ -102,13 +99,8 @@ private:
 	int32_t _currentBackgroundEffect{ 0 };
 	std::vector<ComputeEffect> _backgroundEffect;
 
-	VkPipelineLayout _trianglePipelineLayout;
-	VkPipeline _trianglePipeline;
-
 	VkPipelineLayout _meshPipelineLayout;
 	VkPipeline _meshPipeline;
-
-	GPUMeshBuffers _rectangle;
 
 	std::vector<std::shared_ptr<MeshAsset>> _testMeshes;
 
@@ -116,21 +108,21 @@ private:
 
 
 	void InitVulkan();
+	void CreateDepthImage(uint32_t width, uint32_t height);
 	void InitSwapchain();
 	void InitCommands();
 	void InitSyncStructures();
 	void InitDescriptors();
 	void InitPipelines();
 	void InitImGui();
+	void DestroySwapchain();
 
 	void InitBackgroundPipelines();
-	void InitTrianglePipeline();
 	void InitMeshPipeline();
+	void CreateDrawImage(uint32_t width, uint32_t height);
 
 	void CreateSwapchain(uint32_t width, uint32_t height);
-
-	AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-	void DestroyBuffer(AllocatedBuffer buffer);
+	void ResizeSwapchain();
 
 	void Draw();
 	void DrawBackground(VkCommandBuffer cmd);
@@ -138,4 +130,7 @@ private:
 	void DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView);
 
 	void InitDefaultData();
+
+	AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	void DestroyBuffer(AllocatedBuffer buffer);
 };
