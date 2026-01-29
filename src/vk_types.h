@@ -8,6 +8,7 @@
 #include <vector>
 #include <span>
 #include <array>
+#include <DeletionQueue.h>
 #include <functional>
 #include <deque>
 
@@ -29,6 +30,34 @@
             abort();                                                    \
         }                                                               \
     } while (0)
+
+
+// Frane data structure: holds frame specific command pools, command buffers, semaphores and fences
+struct FrameData
+{
+	VkCommandPool _commandPool;
+	VkCommandBuffer _mainCommandBuffer;
+	VkSemaphore _swapchainSemaphore;
+	VkFence _renderFence;
+	DeletionQueue _deletionQueue;
+};
+
+struct ComputePushConstants
+{
+	glm::vec4 data0;
+	glm::vec4 data1;
+	glm::vec4 data2;
+	glm::vec4 data3;
+};
+
+struct ComputeEffect
+{
+	const char* name;
+
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+	ComputePushConstants data;
+};
 
 struct AllocatedBuffer
 {
