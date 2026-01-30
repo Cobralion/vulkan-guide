@@ -9,8 +9,39 @@
 #include "Swapchain.h"
 
 #include "vk_images.h"
-#include "vk_descriptors.h"
+#include "DescriptorWriter.h"
+#include "DescriptorAllocatorGrowable.h"
 #include "vk_loader.h"
+
+// Frane data structure: holds frame specific command pools, command buffers, semaphores and fences
+struct FrameData
+{
+	VkSemaphore _swapchainSemaphore;
+	VkFence _renderFence;
+
+	VkCommandPool _commandPool;
+	VkCommandBuffer _mainCommandBuffer;
+
+	DeletionQueue _deletionQueue;
+	DescriptorAllocatorGrowable _frameDescriptors;
+};
+
+struct ComputePushConstants
+{
+	glm::vec4 data0;
+	glm::vec4 data1;
+	glm::vec4 data2;
+	glm::vec4 data3;
+};
+
+struct ComputeEffect
+{
+	const char* name;
+
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+	ComputePushConstants data;
+};
 
 constexpr uint32_t FRAME_OVERLAP = 2;
 
@@ -75,9 +106,12 @@ private:
 	VkQueue _graphicsQueue;
 	uint32_t _graphicsQueueFamily;
 
-	DescriptorAllocator _globalDescriptorAllocator;
+	DescriptorAllocatorGrowable _globalDescriptorAllocator;
 	VkDescriptorSet _drawImageDescriptor;
 	VkDescriptorSetLayout _drawImageDescriptorLayout;
+
+	GPUSceneData _sceneData;
+	VkDescriptorSetLayout _sceneDescriptorSetLayout;
 
 	VkPipelineLayout _meshPipelineLayout;
 	VkPipeline _meshPipeline;
