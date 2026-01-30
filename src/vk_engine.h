@@ -69,7 +69,9 @@ private:
 
 	void CreateDrawImage(uint32_t width, uint32_t height);
 	void CreateDepthImage(uint32_t width, uint32_t height);
-	AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaAllocationCreateFlags allocationFlags);
+	vkutil::AllocatedImage CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	vkutil::AllocatedImage CreateImage(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 
 	void InitDefaultData();
 
@@ -79,8 +81,8 @@ private:
 	void DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView);
 
 	void DestroySwapchain();
-	void DestroyBuffer(AllocatedBuffer buffer);
-
+	void DestroyBuffer(const AllocatedBuffer& buffer);
+	void DestroyImage(const vkutil::AllocatedImage& image);
 
 private:
 	VkExtent2D _windowExtent{ 1700 , 900 };
@@ -130,4 +132,14 @@ private:
 	std::vector<std::shared_ptr<MeshAsset>> _testMeshes;
 
 	DeletionQueue _mainDeletionQueue;
+
+	vkutil::AllocatedImage _whiteImage;
+	vkutil::AllocatedImage _blackImage;
+	vkutil::AllocatedImage _greyImage;
+	vkutil::AllocatedImage _errorImage;
+
+	VkSampler _defaultSamplerLinear;
+	VkSampler _defaultSamplerNearest;
+
+	VkDescriptorSetLayout _singleImageDescriptorLayout;
 };

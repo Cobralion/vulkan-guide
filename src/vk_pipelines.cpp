@@ -2,7 +2,7 @@
 #include <fstream>
 #include <vk_initializers.h>
 
-#include "../bin/src/SlangShaderLoader.h"
+#include "SlangShaderLoader.h"
 
 bool vkutil::LoadShaderModuleSPV(const char* filePath, VkDevice device, VkShaderModule* outShaderModule)
 {

@@ -19,6 +19,13 @@ add_executable (engine
   camera.h
   SlangShaderLoader.h
   SlangShaderLoader.cpp
+  Swapchain.h
+  Swapchain.cpp
+  DeletionQueue.h
+  DescriptorAllocatorGrowable.h
+  DescriptorAllocatorGrowable.cpp
+  DescriptorWriter.h
+  DescriptorWriter.cpp
 )
 
 set_property(TARGET engine PROPERTY CXX_STANDARD 20)
